@@ -71,10 +71,14 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.8.2")
 
-    // TensorFlow Lite
-    implementation("org.tensorflow:tensorflow-lite:2.13.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.13.0")
+    // TensorFlow Lite - ОБНОВЛЕННЫЕ ВЕРСИИ
+    // Основная библиотека
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    // Библиотека поддержки (содержит TensorImage, ImageProcessor и т.д.)
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+
+    // Удаляем зависимость от GPU, чтобы исключить возможные проблемы с делегатом
+    // implementation("org.tensorflow:tensorflow-lite-gpu:2.13.0")
 
     // Image processing
     implementation("com.github.bumptech.glide:glide:4.16.0")

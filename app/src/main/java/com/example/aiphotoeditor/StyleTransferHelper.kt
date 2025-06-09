@@ -2,8 +2,11 @@ package com.example.aiphotoeditor
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
+import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
+import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
@@ -13,14 +16,14 @@ import java.nio.ByteOrder
 class StyleTransferHelper(private val context: Context) {
 
     companion object {
-        private const val MODEL_PATH = "style_transfer_model.tflite"
-        private const val INPUT_SIZE = 256
-        private const val OUTPUT_SIZE = 256
+        private const val MODEL_PATH = "style_transfer.tflite"
+        private const val CONTENT_IMAGE_SIZE = 384
+        private const val STYLE_BOTTLENECK_SIZE = 100
+        private const val OUTPUT_SIZE = 384
         private const val PIXEL_SIZE = 3
     }
 
     private var interpreter: Interpreter? = null
-    private var imageProcessor: ImageProcessor? = null
 
     init {
         try {
@@ -32,141 +35,97 @@ class StyleTransferHelper(private val context: Context) {
 
     private fun initializeModel() {
         try {
-            // Попытка загрузить модель из assets
             val modelBuffer = FileUtil.loadMappedFile(context, MODEL_PATH)
             interpreter = Interpreter(modelBuffer)
+        } catch (e: Exception) {
+            interpreter = null
+        }
+    }
 
-            imageProcessor = ImageProcessor.Builder()
-                .add(ResizeOp(INPUT_SIZE, INPUT_SIZE, ResizeOp.ResizeMethod.BILINEAR))
+    // ИЗМЕНЕНИЕ: Метод теперь возвращает финальное изображение в высоком разрешении
+    fun processImage(contentBitmap: Bitmap, styleVector: FloatArray): Bitmap? {
+        if (interpreter == null) return null
+
+        // 1. Получаем стилизованное изображение в низком разрешении
+        val stylizedLowResBitmap = processWithTensorFlow(contentBitmap, styleVector)
+
+        // 2. Если стилизация прошла успешно, рекомбинируем его с оригиналом для сохранения разрешения
+        return stylizedLowResBitmap?.let {
+            recombineWithOriginalResolution(contentBitmap, it)
+        }
+    }
+
+    private fun processWithTensorFlow(contentBitmap: Bitmap, styleVector: FloatArray): Bitmap? {
+        try {
+            val imageProcessor = ImageProcessor.Builder()
+                .add(ResizeOp(CONTENT_IMAGE_SIZE, CONTENT_IMAGE_SIZE, ResizeOp.ResizeMethod.BILINEAR))
+                .add(NormalizeOp(0.0f, 255.0f))
                 .build()
 
-        } catch (e: Exception) {
-            // Если модель не найдена, используем простую имитацию AI обработки
-            interpreter = null
-            imageProcessor = null
-        }
-    }
+            var tensorImage = TensorImage(DataType.FLOAT32)
+            tensorImage.load(contentBitmap)
+            tensorImage = imageProcessor.process(tensorImage)
 
-    fun processImage(bitmap: Bitmap): Bitmap {
-        return if (interpreter != null && imageProcessor != null) {
-            processWithTensorFlow(bitmap)
-        } else {
-            // Fallback: имитация AI обработки с помощью комбинации фильтров
-            processWithSimulatedAI(bitmap)
-        }
-    }
+            val styleBuffer = ByteBuffer.allocateDirect(4 * STYLE_BOTTLENECK_SIZE)
+            styleBuffer.order(ByteOrder.nativeOrder())
+            styleVector.forEach { styleValue ->
+                styleBuffer.putFloat(styleValue)
+            }
+            styleBuffer.rewind()
 
-    private fun processWithTensorFlow(bitmap: Bitmap): Bitmap {
-        try {
-            // Подготовка входного изображения
-            val tensorImage = TensorImage.fromBitmap(bitmap)
-            val processedImage = imageProcessor!!.process(tensorImage)
+            val inputs = arrayOf(tensorImage.buffer, styleBuffer)
 
-            // Создание входного буфера
-            val inputBuffer = ByteBuffer.allocateDirect(4 * INPUT_SIZE * INPUT_SIZE * PIXEL_SIZE)
-            inputBuffer.order(ByteOrder.nativeOrder())
-
-            // Копирование данных изображения в буфер
-            val buffer = processedImage.buffer
-            inputBuffer.put(buffer)
-            inputBuffer.rewind()
-
-            // Создание выходного буфера
             val outputBuffer = ByteBuffer.allocateDirect(4 * OUTPUT_SIZE * OUTPUT_SIZE * PIXEL_SIZE)
             outputBuffer.order(ByteOrder.nativeOrder())
+            val outputs = mapOf(0 to outputBuffer)
 
-            // Выполнение инференса
-            interpreter!!.run(inputBuffer, outputBuffer)
+            interpreter!!.runForMultipleInputsOutputs(inputs, outputs)
 
-            // Преобразование результата обратно в Bitmap
             return bufferToBitmap(outputBuffer, OUTPUT_SIZE, OUTPUT_SIZE)
 
         } catch (e: Exception) {
             e.printStackTrace()
-            return processWithSimulatedAI(bitmap)
+            return null
         }
     }
 
-    private fun processWithSimulatedAI(bitmap: Bitmap): Bitmap {
-        // Имитация AI обработки через комбинацию фильтров
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val width = result.width
-        val height = result.height
-        val pixels = IntArray(width * height)
+    // НОВЫЙ МЕТОД: для рекомбинации детализации и стиля
+    private fun recombineWithOriginalResolution(original: Bitmap, stylizedLowRes: Bitmap): Bitmap {
+        val originalWidth = original.width
+        val originalHeight = original.height
 
-        result.getPixels(pixels, 0, width, 0, 0, width, height)
+        // Растягиваем стилизованное изображение до оригинального размера
+        val upscaledStylized = Bitmap.createScaledBitmap(stylizedLowRes, originalWidth, originalHeight, true)
 
-        // Применяем "AI-подобную" обработку
-        for (i in pixels.indices) {
-            val pixel = pixels[i]
-            val r = (pixel shr 16) and 0xff
-            val g = (pixel shr 8) and 0xff
-            val b = pixel and 0xff
+        val originalPixels = IntArray(originalWidth * originalHeight)
+        original.getPixels(originalPixels, 0, originalWidth, 0, 0, originalWidth, originalHeight)
 
-            // Эффект "масляной живописи"
-            val newR = enhanceChannel(r, 1.1f, 15)
-            val newG = enhanceChannel(g, 1.05f, 10)
-            val newB = enhanceChannel(b, 1.15f, 20)
+        val stylizedPixels = IntArray(originalWidth * originalHeight)
+        upscaledStylized.getPixels(stylizedPixels, 0, originalWidth, 0, 0, originalWidth, originalHeight)
 
-            pixels[i] = (0xff shl 24) or (newR shl 16) or (newG shl 8) or newB
+        val finalPixels = IntArray(originalWidth * originalHeight)
+
+        val originalHsv = FloatArray(3)
+        val stylizedHsv = FloatArray(3)
+
+        for (i in finalPixels.indices) {
+            // Конвертируем оба пикселя в HSV
+            Color.colorToHSV(originalPixels[i], originalHsv)
+            Color.colorToHSV(stylizedPixels[i], stylizedHsv)
+
+            // Берем Hue и Saturation от стилизованного, а Value от оригинального
+            val finalHsv = floatArrayOf(stylizedHsv[0], stylizedHsv[1], originalHsv[2])
+
+            // Конвертируем обратно в RGB и записываем в финальный массив
+            finalPixels[i] = Color.HSVToColor(finalHsv)
         }
 
-        result.setPixels(pixels, 0, width, 0, 0, width, height)
-
-        // Добавляем легкое размытие для эффекта
-        return applyGaussianBlur(result, 1f)
+        return Bitmap.createBitmap(finalPixels, originalWidth, originalHeight, Bitmap.Config.ARGB_8888)
     }
 
-    private fun enhanceChannel(value: Int, multiplier: Float, boost: Int): Int {
-        val enhanced = (value * multiplier + boost).toInt()
-        return enhanced.coerceIn(0, 255)
-    }
-
-    private fun applyGaussianBlur(bitmap: Bitmap, radius: Float): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val width = result.width
-        val height = result.height
-        val pixels = IntArray(width * height)
-
-        result.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        // Простое приближение Gaussian blur
-        val blurredPixels = IntArray(width * height)
-        val radiusInt = radius.toInt()
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                var totalR = 0
-                var totalG = 0
-                var totalB = 0
-                var count = 0
-
-                for (dy in -radiusInt..radiusInt) {
-                    for (dx in -radiusInt..radiusInt) {
-                        val nx = (x + dx).coerceIn(0, width - 1)
-                        val ny = (y + dy).coerceIn(0, height - 1)
-                        val pixel = pixels[ny * width + nx]
-
-                        totalR += (pixel shr 16) and 0xff
-                        totalG += (pixel shr 8) and 0xff
-                        totalB += pixel and 0xff
-                        count++
-                    }
-                }
-
-                val avgR = totalR / count
-                val avgG = totalG / count
-                val avgB = totalB / count
-
-                blurredPixels[y * width + x] = (0xff shl 24) or (avgR shl 16) or (avgG shl 8) or avgB
-            }
-        }
-
-        result.setPixels(blurredPixels, 0, width, 0, 0, width, height)
-        return result
-    }
 
     private fun bufferToBitmap(buffer: ByteBuffer, width: Int, height: Int): Bitmap {
+        // ... (этот метод без изменений)
         buffer.rewind()
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val pixels = IntArray(width * height)
