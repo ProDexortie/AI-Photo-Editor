@@ -3,41 +3,42 @@
     <string name="app_subtitle">Редактируйте фото с ИИ-фильтрами</string>
     <string name="app_logo">Логотип приложения</string>
 
-    <!-- Main Activity -->
     <string name="select_from_gallery">Выбрать из галереи</string>
     <string name="take_photo">Сделать фото</string>
 
-    <!-- Image Edit Activity -->
-    <string name="edit_image">Редактирование изображения</string>
+    <string name="edit_image">Редактирование</string>
     <string name="edited_image">Отредактированное изображение</string>
-    <string name="reset">Сбросить</string>
     <string name="save">Сохранить</string>
+    <string name="reset">Сброс</string>
 
-    <!-- Filter Names -->
+    <string name="tools">Инструменты</string>
+    <string name="filters">Фильтры</string>
+    <string name="ai_style">AI Стиль</string>
+
+    <string name="tool_brightness">Яркость</string>
+    <string name="tool_contrast">Контраст</string>
+    <string name="tool_saturation">Насыщенность</string>
+    <string name="tool_temperature">Температура</string>
+    <string name="tool_vibrance">Вибрация</string>
+    <string name="tool_sharpness">Резкость</string>
+
     <string name="filter_original">Оригинал</string>
     <string name="filter_sepia">Сепия</string>
-    <string name="filter_bw">Ч/Б</string>
+    <string name="filter_grayscale">Ч/Б</string>
     <string name="filter_vintage">Винтаж</string>
-    <string name="filter_cold">Холодный</string>
-    <string name="filter_warm">Теплый</string>
-    <string name="filter_bright_up">Ярче</string>
-    <string name="filter_bright_down">Темнее</string>
-    <string name="filter_contrast_up">Контраст+</string>
-    <string name="filter_contrast_down">Контраст-</string>
-    <string name="filter_vibrant_up">Насыщ+</string>
-    <string name="filter_vibrant_down">Насыщ-</string>
-    <string name="filter_ai_style">ИИ Стиль</string>
+    <string name="filter_cool">Холодный</string>
+    <string name="filter_invert">Инверсия</string>
+    <string name="filter_solarize">Соляризация</string>
 
-    <!-- Permissions -->
     <string name="permission_camera_title">Разрешение камеры</string>
     <string name="permission_camera_message">Приложению требуется доступ к камере для съемки фотографий</string>
     <string name="permission_storage_title">Разрешение хранилища</string>
     <string name="permission_storage_message">Приложению требуется доступ к хранилищу для работы с фотографиями</string>
 
-    <!-- Messages -->
     <string name="image_saved">Изображение успешно сохранено</string>
     <string name="image_save_failed">Не удалось сохранить изображение</string>
     <string name="image_load_failed">Не удалось загрузить изображение</string>
+    <string name="image_reset_success">Изображение сброшено</string>
     <string name="filter_applied">Фильтр применен</string>
     <string name="processing">Обработка...</string>
     <string name="permissions_required">Требуются разрешения</string>
@@ -45,4 +46,6 @@
     <string name="no_image_provided">Изображение не предоставлено</string>
     <string name="failed_to_load_image">Не удалось загрузить изображение</string>
     <string name="failed_to_apply_filter">Не удалось применить фильтр</string>
+    <string name="failed_to_generate_style_vector">Ошибка создания вектора стиля</string>
+    <string name="failed_to_apply_ai_style">Ошибка применения AI стиля</string>
 </resources>

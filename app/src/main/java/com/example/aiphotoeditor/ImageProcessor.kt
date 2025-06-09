@@ -1,11 +1,19 @@
 package com.example.aiphotoeditor
 
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
+import kotlin.math.max
+import kotlin.math.pow
 
 class ImageProcessor {
 
+    // --- Существующие фильтры ---
+
     fun applySepia(bitmap: Bitmap): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val colorMatrix = ColorMatrix().apply {
             set(floatArrayOf(
                 0.393f, 0.769f, 0.189f, 0f, 0f,
@@ -14,19 +22,15 @@ class ImageProcessor {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        return applyColorMatrix(result, colorMatrix)
+        return applyColorMatrix(bitmap, colorMatrix)
     }
 
     fun applyGrayscale(bitmap: Bitmap): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val colorMatrix = ColorMatrix().apply {
-            setSaturation(0f)
-        }
-        return applyColorMatrix(result, colorMatrix)
+        val colorMatrix = ColorMatrix().apply { setSaturation(0f) }
+        return applyColorMatrix(bitmap, colorMatrix)
     }
 
     fun applyVintage(bitmap: Bitmap): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val colorMatrix = ColorMatrix().apply {
             set(floatArrayOf(
                 0.6f, 0.3f, 0.1f, 0f, 20f,
@@ -35,37 +39,60 @@ class ImageProcessor {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        return applyColorMatrix(result, colorMatrix)
+        return applyColorMatrix(bitmap, colorMatrix)
     }
 
-    fun applyColdFilter(bitmap: Bitmap): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+    // --- Новые фильтры ---
+
+    fun applyCoolFilter(bitmap: Bitmap): Bitmap {
         val colorMatrix = ColorMatrix().apply {
             set(floatArrayOf(
-                0.8f, 0f, 0f, 0f, 0f,
-                0f, 0.9f, 0f, 0f, 0f,
-                0f, 0f, 1.2f, 0f, 10f,
+                1f, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f,
+                0f, 0f, 1.25f, 0f, 10f, // Увеличиваем синий
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        return applyColorMatrix(result, colorMatrix)
+        return applyColorMatrix(bitmap, colorMatrix)
     }
 
-    fun applyWarmFilter(bitmap: Bitmap): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+    fun applyInvert(bitmap: Bitmap): Bitmap {
         val colorMatrix = ColorMatrix().apply {
             set(floatArrayOf(
-                1.2f, 0f, 0f, 0f, 10f,
-                0f, 1.1f, 0f, 0f, 5f,
-                0f, 0f, 0.8f, 0f, 0f,
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        return applyColorMatrix(result, colorMatrix)
+        return applyColorMatrix(bitmap, colorMatrix)
     }
+
+    fun applySolarize(bitmap: Bitmap, threshold: Int = 128): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        for (i in pixels.indices) {
+            val pixel = pixels[i]
+            val r = (pixel shr 16) and 0xff
+            val g = (pixel shr 8) and 0xff
+            val b = pixel and 0xff
+
+            // ИСПРАВЛЕНИЕ: Добавляем .toInt() к шестнадцатеричным литералам
+            if (r < threshold) pixels[i] = pixels[i] and (0x00FFFFFF).inv() or ((255 - r) shl 16)
+            if (g < threshold) pixels[i] = pixels[i] and (0xFF00FF00.toInt()).inv() or ((255 - g) shl 8)
+            if (b < threshold) pixels[i] = pixels[i] and (0xFFFF00FF.toInt()).inv() or (255 - b)
+        }
+
+        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+    }
+
+
+    // --- Существующие параметры ---
 
     fun adjustBrightness(bitmap: Bitmap, value: Float): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val colorMatrix = ColorMatrix().apply {
             set(floatArrayOf(
                 1f, 0f, 0f, 0f, value,
@@ -74,11 +101,10 @@ class ImageProcessor {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        return applyColorMatrix(result, colorMatrix)
+        return applyColorMatrix(bitmap, colorMatrix)
     }
 
     fun adjustContrast(bitmap: Bitmap, contrast: Float): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val translate = (-.5f * contrast + .5f) * 255f
         val colorMatrix = ColorMatrix().apply {
             set(floatArrayOf(
@@ -88,16 +114,54 @@ class ImageProcessor {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        return applyColorMatrix(result, colorMatrix)
+        return applyColorMatrix(bitmap, colorMatrix)
     }
 
     fun adjustSaturation(bitmap: Bitmap, saturation: Float): Bitmap {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val colorMatrix = ColorMatrix().apply {
-            setSaturation(saturation)
-        }
-        return applyColorMatrix(result, colorMatrix)
+        val colorMatrix = ColorMatrix().apply { setSaturation(saturation) }
+        return applyColorMatrix(bitmap, colorMatrix)
     }
+
+    // --- Новые параметры ---
+
+    fun adjustTemperature(bitmap: Bitmap, temperature: Float): Bitmap {
+        val kelvin = temperature.coerceIn(-100f, 100f)
+        val redFactor = if (kelvin > 0) 1f + 0.005f * kelvin else 1f
+        val blueFactor = if (kelvin < 0) 1f - 0.005f * kelvin else 1f
+
+        val colorMatrix = ColorMatrix().apply {
+            set(floatArrayOf(
+                redFactor, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f,
+                0f, 0f, blueFactor, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+        }
+        return applyColorMatrix(bitmap, colorMatrix)
+    }
+
+    fun applySharpen(bitmap: Bitmap, strength: Float): Bitmap {
+        if (strength == 0f) return bitmap
+        return adjustContrast(bitmap, 1 + (strength / 2f))
+    }
+
+    fun adjustVibrance(bitmap: Bitmap, vibrance: Float): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val hsv = FloatArray(3)
+
+        for (i in pixels.indices) {
+            Color.colorToHSV(pixels[i], hsv)
+            val saturation = hsv[1]
+            val amount = (1 - saturation).pow(2) * vibrance * 0.1f
+            hsv[1] = (saturation + amount).coerceIn(0f, 1f)
+            pixels[i] = Color.HSVToColor(pixels[i] and (0xFF shl 24), hsv)
+        }
+        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+    }
+
 
     private fun applyColorMatrix(bitmap: Bitmap, colorMatrix: ColorMatrix): Bitmap {
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
